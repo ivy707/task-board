@@ -84,9 +84,17 @@
   /* Paste Command Bar (居中胶囊状，Google 风) */
   .paste-cmd{
     display:flex; align-items:center; gap:8px;
-    max-width:680px; margin:18px auto 0; padding:8px 14px;
+    max-width:420px; margin:18px auto 0; padding:6px 12px;
     background:#fff; border:1px solid var(--line); border-radius:24px;
     box-shadow:var(--shadow-sm);
+    transition:box-shadow .15s, border-color .15s;
+  }
+  .paste-cmd:focus-within{
+    border-color:rgba(79,109,245,.35);
+    box-shadow:0 2px 8px rgba(79,109,245,.10), 0 4px 16px rgba(31,39,51,.06);
+  }
+  @media (max-width:600px){
+    .paste-cmd{max-width:calc(100% - 40px); margin:14px 20px 0;}
   }
   .pcb-icon{flex-shrink:0; font-size:14px; opacity:.85; padding:0 4px}
   .pcb-input{
@@ -349,7 +357,6 @@ function saveToCloud(data){
   const hash = simpleHash(json);
   if(hash === _lastSavedHash) { _dirty = false; return; }
   _dirty = true;
-  _lastSavedHash = hash;
   try{ localStorage.setItem('task_board_local', json); }catch(e){}
   if(_saveLock) return;
   _saveLock = true;
@@ -357,7 +364,7 @@ function saveToCloud(data){
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: json
-  }).then(r=>{ if(r.ok){ _dirty = false; } })
+  }).then(r=>{ if(r.ok){ _dirty = false; _lastSavedHash = hash; } })
     .catch(()=>{})
     .finally(()=>{ _saveLock = false; });
 }
@@ -403,6 +410,7 @@ function startPollSync(){
 
 let saveTimer;
 function save(){
+  _dirty = true;                         // 立即标记：本地有未保存改动，轮询禁止覆盖
   clearTimeout(saveTimer);
   saveTimer = setTimeout(()=>{ saveToCloud(state); }, 200);
 }
