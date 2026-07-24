@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>我的每日任务</title>
+<script src="https://web.sdk.qcloud.com/cloudbase-js-sdk/2.2.0/cloudbase.full.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f6fb; --panel:#ffffff; --ink:#1f2733; --ink-soft:#5b6675;
+    --line:#e6eaf2; --line-soft:#d0d7e6;
+    --primary:#4f6df5; --primary-soft:#eaeefe;
+    --green:#2bb673; --green-soft:#e2f6ec;
+    --red:#e4533c; --red-soft:#fff5f3;
+    --zs:#6b4fcf; --zs-soft:#f0ecfe;
+    --sh:#1d9e75;
+    --zb:#2563eb; --zb-soft:#eff6ff;
+    --her:#ec4899; --her-soft:#fce7f3;       /* 她的日程 — 粉色 (重新启用) */
+    --today-c:#1e40af; --today-head:#eff6ff; --today-ink:#1e3a8a;
+    --shadow-sm:0 1px 2px rgba(31,39,51,.05),0 3px 8px rgba(31,39,51,.04);
+    --shadow:0 1px 3px rgba(31,39,51,.05),0 8px 24px rgba(31,39,51,.06);
+    --shadow-lg:0 2px 4px rgba(31,39,51,.04),0 12px 36px rgba(31,39,51,.08);
+    --radius:14px;
+    --font-zh:'Noto Sans SC',-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:var(--font-zh);
+    background:
+      radial-gradient(ellipse 80% 60% at 50% -10%, rgba(79,109,245,.04), transparent),
+      radial-gradient(ellipse 60% 50% at 85% 50%, rgba(107,79,207,.03), transparent),
+      var(--bg);
+    color:var(--ink); font-size:14px; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    font-feature-settings:"tnum" 1,"kern" 1;
+    position:relative;
+  }
+  /* Subtle noise grain overlay */
+  body::before{
+    content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+    opacity:.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  }
+  /* Ensure all content is above the grain overlay */
+  header.top, .week-nav-bar, .paste-cmd, .inbox, .toolbar, #myGrid, .toast{position:relative; z-index:1}
+
+  /* Header — 三段式: 左 品牌 / 中 今天日期 / 右 按钮 */
+  header.top{position:sticky; top:0; z-index:30; background:rgba(255,255,255,.92);
+    backdrop-filter:blur(8px); border-bottom:1px solid var(--line); padding:13px 26px;}
+  .top-row{display:flex; align-items:center; gap:16px; flex-wrap:wrap}
+  .brand{display:flex; align-items:center; gap:12px; flex-shrink:0;}
+  .logo{width:36px;height:36px;border-radius:10px;
+    background:linear-gradient(135deg,#4f6df5,#7b5bf5); color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:800; font-size:18px; box-shadow:0 3px 10px rgba(79,109,245,.30);}
+  .brand h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.3px; white-space:nowrap;}
+  /* 中间: 今天日期 (精致排版) */
+  .top-center{flex:1; text-align:center; font-size:13.5px; letter-spacing:.6px;
+    font-feature-settings:"tnum" 1; display:flex; align-items:center; justify-content:center; gap:8px;}
+  .top-today{color:var(--primary); font-weight:700; letter-spacing:.8px;}
+  .top-date{color:var(--ink); font-weight:600;}
+  .top-dow{color:var(--ink-soft); font-weight:500; font-size:12.5px;
+    padding:2px 8px; background:var(--primary-soft); border-radius:6px; letter-spacing:.4px;}
+  .top-right{display:flex; align-items:center; gap:8px; flex-shrink:0;}
+  .btn{border:1px solid var(--line); background:#fff; color:var(--ink);
+    padding:7px 13px; border-radius:9px; cursor:pointer; font-size:13px;
+    font-weight:500; display:inline-flex; align-items:center; gap:6px;
+    transition:.15s; font-family:inherit;}
+  .btn:hover{border-color:#cfd6e4; background:#f8faff}
+  .btn.primary{background:var(--primary); border-color:var(--primary); color:#fff}
+  .btn.primary:hover{background:#3f5bea}
+  .btn.sm{padding:5px 10px;font-size:12px;border-radius:7px}
+
+  /* Week nav bar */
+  .week-nav-bar{display:flex; align-items:center; gap:10px;
+    padding:11px 26px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap}
+  .week-label{display:inline-flex; align-items:center; gap:4px;
+    padding:6px 14px; border-radius:9px;
+    background:var(--primary-soft); color:var(--primary); font-weight:700; font-size:13px;}
+
+  /* 智能粘贴 + 灵感箱 左右并排 */
+  /* Paste Command Bar (卡片式命令栏，紧跟周导航下方) */
+  .paste-cmd{
+    display:flex; align-items:center; gap:10px;
+    margin:14px 26px 0; padding:10px 14px;
+    background:#fff; border:1px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow-sm);
+  }
+  .pcb-icon{flex-shrink:0; font-size:14px; opacity:.85; padding:0 2px}
+  .pcb-input{
+    flex:1; min-width:0; border:1px solid var(--line); border-radius:10px;
+    padding:7px 12px; font-size:13px; font-family:inherit; background:#fff; color:var(--ink);
+    font-weight:500; letter-spacing:.1px; resize:none;
+    height:34px; line-height:20px; overflow:hidden;
+  }
+  .pcb-input:focus{outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft)}
+  .pcb-day{
+    border:1px solid var(--line); border-radius:8px; padding:6px 10px;
+    font-size:12.5px; font-family:inherit; background:#fff; color:var(--ink);
+    cursor:pointer; font-weight:600; flex-shrink:0;
+  }
+  .pcb-day:focus{outline:none; border-color:var(--primary)}
+
+  /* Inbox (独立块) */
+  .inbox{background:#fff; margin:14px 26px 28px;
+    border:1px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow-sm); overflow:hidden; display:flex; flex-direction:column;}
+  .inbox-head{padding:12px 14px; border-bottom:1px solid var(--line);
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .inbox-title{font-size:13.5px; font-weight:700; display:inline-flex; align-items:center; gap:8px;}
+  .inbox-input-row{display:flex; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line);
+    background:#fafbfd;}
+  .inbox-input{flex:1; border:1px solid var(--line); border-radius:8px;
+    padding:6px 10px; font-size:13px; font-family:inherit; background:#fff; color:var(--ink);}
+  .inbox-input:focus{outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft)}
+  .inbox-add{font-size:12px; color:#fff; background:var(--primary); border:1px solid var(--primary);
+    padding:6px 14px; border-radius:8px; cursor:pointer; font-family:inherit; font-weight:600}
+  .inbox-add:hover{background:#3f5bea}
+  .inbox-list{flex:1; padding:8px 14px 12px; display:flex; flex-direction:column; gap:3px; min-height:60px;}
+
+  /* Toolbar */
+  .toolbar{display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:12px 26px 0;}
+  .seg{display:inline-flex; background:#eef1f7; border-radius:9px; padding:3px}
+  .seg button{border:none; background:transparent; padding:6px 14px; border-radius:7px;
+    cursor:pointer; font-size:13px; color:var(--ink-soft); font-family:inherit; font-weight:500}
+  .seg button.active{background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .stats{margin-left:auto; font-size:13px; color:var(--ink-soft)}
+  .stats b{color:var(--ink); font-weight:700}
+
+  /* Main */
+  main{padding:12px 26px 80px; max-width:1380px; margin:0 auto}
+
+  /* Day grid — 4+4 = 8 cards */
+  .day-grid{display:grid; grid-template-columns:repeat(4, 1fr); gap:14px}
+  @media (max-width:1100px){.day-grid{grid-template-columns:repeat(2, 1fr)}}
+  @media (max-width:600px){.day-grid{grid-template-columns:1fr}}
+
+  .day-card{background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow-sm); display:flex; flex-direction:column; overflow:hidden;
+    min-height:200px; position:relative;}
+  /* hover 动画已删除 */
+  .day-card.drop{box-shadow:0 0 0 2px var(--primary), var(--shadow-lg); border-color:var(--primary)}
+
+  /* (entrance animation removed — was causing flicker) */
+
+  .day-card-head{padding:11px 14px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, #fafcfe 0%, #f6f8fc 100%);
+    display:flex; justify-content:space-between; align-items:center; gap:8px;}
+  .day-name{font-size:14px; font-weight:700; display:flex; align-items:center; gap:6px}
+  .day-name .date{font-weight:500; opacity:.8; font-size:13px}
+  .today-tag{display:inline-block; background:rgba(255,255,255,.85);
+    color:var(--today-ink); padding:2px 8px; border-radius:7px;
+    font-size:10.5px; font-weight:700; margin-left:4px;}
+  /* day-meta 已删除（不要"X 待办"字样） */
+
+  /* Today card — refined glow, not thick border */
+  .day-card.today{
+    border-color:rgba(79,109,245,.3);
+    box-shadow:0 0 0 3px rgba(79,109,245,.06),0 6px 24px rgba(79,109,245,.12),var(--shadow-sm)}
+  .day-card.today .day-card-head{
+    background:linear-gradient(135deg, #eff4ff 0%, #e8eeff 100%);
+    color:var(--today-ink); border-bottom-color:#c7d5f7}
+  .day-card.today .today-tag{background:var(--primary); color:#fff;
+    box-shadow:0 2px 8px rgba(79,109,245,.25)}
+  .day-card.today .add-day-btn{color:var(--today-c)}
+  .day-card.today .add-day-btn:hover{background:#dbeafe}
+  .day-card.today .task-row:hover{background:rgba(79,109,245,.04)}
+
+  .day-card-body{padding:8px 10px 6px; flex:1; min-height:80px; max-height:340px; overflow-y:auto;
+    display:flex; flex-direction:column; gap:6px;}
+
+  /* 分区之间用虚线分隔，分区靠任务行的左侧色条识别（去掉原本像括号的 tint 包裹） */
+  .sec-divider{height:0; border-top:1px dashed var(--line-soft); margin:8px 6px; opacity:.55;}
+
+  .day-card-foot{padding:8px 13px; border-top:1px solid var(--line);
+    background:#fafbfd; display:flex; justify-content:flex-end; align-items:center; gap:8px;}
+  .add-day-btn{font-size:12px; color:var(--primary); background:#fff; border:1px solid var(--line);
+    padding:3px 13px; border-radius:6px; cursor:pointer; font-family:inherit; font-weight:600}
+  .add-day-btn:hover{background:var(--primary-soft); border-color:var(--primary-soft)}
+
+  /* Her card (粉色主题 + 浅粉心形 icon) */
+  .her-day{}
+  .her-day .day-card-head{background:var(--her-soft); color:var(--her)}
+  .her-day .add-day-btn{color:var(--her)}
+  .her-day .add-day-btn:hover{background:var(--her-soft); border-color:var(--her)}
+  .her-day .her-nav-btn{
+    width:22px;height:22px;border-radius:6px;border:1px solid transparent;background:transparent;
+    color:var(--her); cursor:pointer; font-size:14px; font-weight:600; line-height:1;
+    display:inline-flex; align-items:center; justify-content:center;
+    transition:.15s; font-family:inherit;
+  }
+  .her-day .her-nav-btn:hover{background:#fff; border-color:var(--her-soft)}
+  .heart{display:inline-block; color:var(--her); font-size:13px; margin-left:2px}
+
+  /* task row — 不再有左侧色条/边框（删掉"括号"视觉），分区靠下方 .sec-block 的淡色块区分 */
+  .task-row{display:flex; align-items:center; gap:6px; padding:5px 4px;
+    border-radius:6px; transition:.15s;}
+  .task-row:hover{background:rgba(255,255,255,.65)}
+  .task-row.done{opacity:.32}
+  .task-row.done .t-name{text-decoration:line-through; color:var(--ink-soft)}
+  .task-row.dragging{opacity:.3}
+
+  /* 三段分块 — 不再有底纹颜色，靠虚线分隔 */
+  .sec-block{padding:6px 4px;}
+  .sec-block:not(:first-child){border-top:1px dashed var(--line-soft);}
+  /* sec-empty 占位已删除 */
+  /* 已完成的任务区 — 不再带原 section 的彩色块，在日卡末尾统一展示 */
+  .sec-done-group{padding:8px 4px 4px; border-top:1px dashed var(--line-soft);}
+
+  .check{width:15px; height:15px; border-radius:5px; border:1.5px solid #cfd6e4;
+    background:#fff; cursor:pointer; flex-shrink:0; padding:0;
+    display:flex; align-items:center; justify-content:center; transition:.15s;}
+  .check:hover{border-color:var(--primary)}
+  .check.on{background:var(--primary); border-color:var(--primary)}
+  .t-time{width:42px; border:1px solid transparent; border-radius:5px; padding:2px 4px;
+    font-size:11.5px; font-family:inherit; color:var(--zb); background:var(--zb-soft);
+    text-align:center; font-weight:500; flex-shrink:0; letter-spacing:.3px;}
+  .t-time:focus{outline:none; border-color:var(--zb); box-shadow:0 0 0 2px var(--zb-soft); background:#fff}
+  .t-time::placeholder{color:#94a3b8; font-weight:400; font-style:italic}
+  .task-row.no-time .t-time{display:none}
+  /* 她的日程时间框 — 不要粉色底，做中性 */
+  /* 她的日程时间框 — 沿用主蓝底色（与我的任务一致），只调宽度 */
+  .her-row .t-time{width:48px; font-size:11.5px;}
+
+  /* 任务名字体：再缩小 + 再轻一点 */
+  .t-name{flex:1; min-width:0; border:none; background:transparent; padding:3px 6px;
+    font-size:12.5px; font-weight:500; color:var(--ink); border-radius:4px;
+    letter-spacing:0; line-height:1.4;}
+  .t-name:focus{outline:none; background:#fff; box-shadow:0 0 0 2px var(--primary-soft)}
+  .t-name::placeholder{color:#aab2c0; font-weight:400}
+
+  .grip{color:#c3cad6; cursor:grab; flex-shrink:0; line-height:0; padding:0 2px}
+  .grip:active{cursor:grabbing}
+  .t-del{border:none; background:transparent; color:#aab2c0; cursor:pointer; font-size:16px;
+    width:20px; height:20px; border-radius:5px; padding:0; line-height:1; flex-shrink:0}
+  .t-del:hover{background:#fdf2f0; color:var(--red)}
+
+  /* 她的日程地点输入框 — 不要小图标，字稍大，深色可读 */
+  .ev-loc-input{
+    width:120px; border:none; background:transparent;
+    padding:4px 6px; font-size:13px; color:var(--ink);
+    text-align:right; border-radius:4px; flex-shrink:0;
+  }
+  .ev-loc-input::placeholder{color:#b8c0cc; font-style:italic}
+  .ev-loc-input:focus{outline:none; background:#eaeefe}
+  /* 她的日程输入项：地点更窄，把空间让给事项输入框 */
+  .ev-loc-input{width:56px; padding:3px 5px; font-size:12px;}
+  .t-name{min-width:60px;}
+
+  .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:#1f2733; color:#fff; padding:10px 18px; border-radius:10px; font-size:13px;
+    opacity:0; pointer-events:none; transition:.25s; z-index:80;
+    box-shadow:0 6px 20px rgba(0,0,0,.2)}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-row">
+    <div class="brand">
+      <div class="logo">✓</div>
+      <h1>我的每日任务</h1>
+    </div>
+    <div class="top-center" id="dateLabel">今天 · 7月24日 周五</div>
+    <div class="top-right">
+      <button class="btn sm" onclick="exportData()">⬇ 导出</button>
+      <button class="btn sm" onclick="importData()">⬆ 导入</button>
+    </div>
+  </div>
+</header>
+
+<div class="week-nav-bar">
+  <button class="btn sm" onclick="shiftWeek(-1)">← 上周</button>
+  <div class="week-label" id="myWeekLabel">查看 · 本周</div>
+  <button class="btn sm" onclick="shiftWeek(1)">下周 →</button>
+  <button class="btn sm" onclick="goToday()">↻ 回到本周</button>
+</div>
+
+<!-- 命令栏: 智能粘贴 (一行式) -->
+<div class="paste-cmd">
+  <span class="pcb-icon">💡</span>
+  <textarea id="quickInput" class="pcb-input" rows="1" placeholder="输入任务按回车…"></textarea>
+  <select id="targetDay" class="pcb-day"></select>
+  <button class="btn primary sm" onclick="quickOrganize()">✨ 智能整理</button>
+</div>
+
+<!-- 灵感箱已移至底部 -->
+
+<!-- 她的日程已合并到主粘贴框（用「她」前缀），不单独占位 -->
+
+<div class="toolbar">
+  <div class="seg" id="filterSeg">
+    <button class="active" data-f="all">全部</button>
+    <button data-f="todo">待办</button>
+    <button data-f="done">已完成</button>
+  </div>
+  <div class="stats" id="stats"></div>
+</div>
+
+<main>
+  <div class="day-grid" id="myGrid"></div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<!-- 灵感箱: 移到所有内容之后 -->
+<div class="inbox">
+  <div class="inbox-head">
+    <div class="inbox-title">💡 灵感箱</div>
+  </div>
+  <div class="inbox-input-row">
+    <input id="inboxInput" class="inbox-input">
+    <button class="inbox-add" onclick="inboxAdd()">入库</button>
+  </div>
+  <div class="inbox-list" id="inboxList"></div>
+</div>
+
+<script>
+/* === jsonkeeper.com 免费 JSON 存储 (本地 localStorage 兜底) === */
+/* 同一个 secret key = 同一份数据，多端自动共享 */
+const API_BASE = window.location.origin + '/api/tasks';
+let _lastSavedHash = '', _saveLock = false, _polling = false;
+
+async function loadFromCloud(){
+  if(!API_BASE || API_BASE.startsWith('YOUR_')) return null;
+  try{
+    const res = await fetch(API_BASE, { method: 'GET' });
+    if(!res.ok) return null;
+    const d = await res.json();
+    if(d && typeof d.myTasks !== 'undefined'){
+      d.schema = d.schema || 6;
+      if(!d.viewWeekStart) d.viewWeekStart = mondayOf(todayStr());
+      if(!d.targetDay) d.targetDay = todayStr();
+      if(!d.herViewDate) d.herViewDate = todayStr();
+      if(!d.herTasks) d.herTasks = [];
+      return d;
+    }
+  }catch(e){}
+  return null;
+}
+
+function saveToCloud(data){
+  if(!API_BASE || API_BASE.startsWith('YOUR_')) return;
+  const json = JSON.stringify(data);
+  const hash = simpleHash(json);
+  if(hash === _lastSavedHash) return;
+  _lastSavedHash = hash;
+  try{ localStorage.setItem('task_board_local', json); }catch(e){}
+  if(_saveLock) return;
+  _saveLock = true;
+  fetch(API_BASE, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: json
+  }).catch(()=>{}).finally(()=>{ _saveLock = false; });
+}
+
+function simpleHash(s){
+  let h=0; for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i); h|=0;} return String(h);
+}
+
+async function initLoad(){
+  migrateOldData();
+  const cloud = await loadFromCloud();
+  if(cloud) return cloud;
+  const local = localStorage.getItem('task_board_local');
+  if(local){ try{ const d=JSON.parse(local); if(d&&d.myTasks) return d; }catch(e){} }
+  return defaultData();
+}
+
+let _pollTimer;
+function startPollSync(){
+  if(!API_BASE || API_BASE.startsWith('YOUR_')) return;
+  if(_pollTimer) clearInterval(_pollTimer);
+  _pollTimer = setInterval(async ()=>{
+    if(_saveLock || _polling) return;
+    _polling = true;
+    try{
+      const res = await fetch(API_BASE, { method: 'GET' });
+      if(!res.ok) return;
+      const cloud = await res.json();
+      if(!cloud) return;
+      const h1 = simpleHash(JSON.stringify({myTasks:cloud.myTasks||[], herTasks:cloud.herTasks||[]}));
+      const h2 = simpleHash(JSON.stringify({myTasks:state.myTasks, herTasks:state.herTasks}));
+      if(h1 !== h2){
+        state.myTasks = cloud.myTasks || [];
+        state.herTasks = cloud.herTasks || [];
+        state.viewWeekStart = cloud.viewWeekStart || state.viewWeekStart;
+        state.targetDay = cloud.targetDay || state.targetDay;
+        state.herViewDate = cloud.herViewDate || state.herViewDate;
+        _lastSavedHash = h1; render();
+      }
+    }catch(e){} finally{ _polling = false; }
+  }, 3000);
+}
+
+let saveTimer;
+function save(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>{ saveToCloud(state); }, 200);
+}
+
+function migrateOldData(){
+  try{
+    for(const k of ['my_tasks_v5','my_tasks_v4','my_tasks_v3','my_tasks_v2','my_tasks_v1']){
+      const raw = localStorage.getItem(k);
+      if(raw && !localStorage.getItem('task_board_local')){
+        const d = JSON.parse(raw);
+        if(d && d.myTasks){
+          if(!d.myTasks && d.tasks){
+            const m={'答疑':'考研','授课':'考研','资料':'考研','会议':'专升本','备课':'专升本'};
+            d.myTasks = d.tasks.map(t=>({id:t.id||uid(), date:t.date||todayStr(), section:m[t.cat]||'生活', time:t.time||'', name:t.name||'', done:!!t.done, doneAt:t.doneAt||''}));
+            d.herTasks = d.herTasks || [];
+          }
+          if(!d.viewWeekStart) d.viewWeekStart = mondayOf(todayStr());
+          if(!d.targetDay) d.targetDay = todayStr();
+          d.schema = 6;
+          localStorage.setItem('task_board_local', JSON.stringify(d));
+        }
+        break;
+      }
+    }
+  }catch(e){}
+}
+
+const LS_KEY = "task_board_local"; // 保留以供 import/export 引用
+let state;
+const SECTIONS = ["专升本","考研","生活"];
+const SEC_KEY = ["b1","b2","b3"];
+const DOW = ["日","一","二","三","四","五","六"];
+
+function pad2(n){return String(n).padStart(2,"0")}
+function fmtDate(d){return d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate())}
+function parseD(s){return new Date((s||"1970-01-01")+"T00:00:00")}
+function md(d){return (d.getMonth()+1)+"月"+d.getDate()+"日"}
+function shortmd(d){return (d.getMonth()+1)+"/"+d.getDate()}
+function todayStr(){return fmtDate(new Date())}
+function addDays(dateStr, n){const d=parseD(dateStr); d.setDate(d.getDate()+n); return fmtDate(d)}
+function mondayOf(dateStr){const d=parseD(dateStr); const dow=d.getDay();
+  const diff = dow===0 ? -6 : 1-dow; d.setDate(d.getDate()+diff); return fmtDate(d)}
+function uid(){return "t"+Math.random().toString(36).slice(2,9)}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+function stripPeriod(s){return (s||"").replace(/[。.．]+$/, '').trim()}
+
+function defaultData(){
+  const td = todayStr();
+  return {schema:6, viewWeekStart: mondayOf(td), targetDay: td, herViewDate: td,
+    myTasks:[],
+    herTasks:[]};
+}
+
+function toast(msg){const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1500)}
+
+/* 智能识别任务分类（行内实时用）— 只用两个核心关键词，简单可预期 */
+function detectCatForTask(text){
+  const s = (text||"");
+  /* 只识别"专升本"和"考研"两个词，其它（含 讲义/录课/答疑 等）全部默认归生活 */
+  if(s.includes("专升本")) return "专升本";
+  if(s.includes("考研")) return "考研";
+  return "生活";
+}
+
+/* PARSERS */
+/* 中文数字 → 阿拉伯数字（支持：一二…九、两、二十、十二 等） */
+const CN = {'零':0,'〇':0,'一':1,'幺':1,'二':2,'两':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,'十':10};
+function cnNum(s){
+  if(!s) return NaN;
+  if(s.length===1 && CN[s]!==undefined) return CN[s];
+  if(s.length===2){
+    const a=CN[s[0]], b=CN[s[1]];
+    if(a===undefined || b===undefined) return parseInt(s);
+    if(b===10) return a * 10;        // 二十/三十/九十 = 20/30/90
+    if(a===10) return 10 + b;        // 十二/十三/十九 = 12/13/19
+    return 10 + b;                    // 十八/二十八/三七五 = 18/28/75
+  }
+  if(s.length===3){
+    const a=CN[s[0]], b=CN[s[1]], c=CN[s[2]];
+    if(a===undefined || b===undefined || c===undefined) return parseInt(s);
+    if(b===10) return a*10 + c;       // 二十五/三十五/五十八 = 25/35/58
+  }
+  return parseInt(s);
+}
+function parseTime(text){
+  /* min 收紧为只匹配阿拉伯数字：避免「2点白马」中 min 贪婪抓「白马」导致 NaN。
+     中文数字走 h 字段（如「下午两点半」→ h=2, min=30）。 */
+  const m = text.match(/(上午|下午|早上|晚上|中午|凌晨)?\s*([\d\u4e00-\u9fa5]{1,3})\s*[:点]\s*(\d{0,2})\s*分?(半)?/);
+  if(!m) return {rest:text.trim(), time:""};
+  let h=cnNum(m[2]); const ap=m[1];
+  let min=m[3] ? cnNum(m[3]) : 0;
+  /* 防御：h/min 任一不是数字时直接返回空时间（例：min 是 "上课" 这种非数字被误抓） */
+  if(!isFinite(h) || !isFinite(min)) return {rest:text.trim(), time:""};
+  if(m[4]==="半") min=30;
+  if(ap==="下午"||ap==="晚上"||ap==="中午"){if(h<12) h+=12;}
+  else if(ap==="上午"||ap==="早上"||ap==="凌晨"){if(h===12) h=0;}
+  if(h>23) h=23; if(min>59) min=0;
+  return {rest:text.replace(m[0],"").replace(/\s+/g," ").trim(),
+          time:pad2(h)+":"+pad2(min)};
+}
+function parseDate(text){
+  const t_=parseD(todayStr());
+  let rest=text.trim(), date=null;
+  const m1=rest.match(/^(今天|明天|后天|大后天)/);
+  if(m1){
+    const off={"今天":0,"明天":1,"后天":2,"大后天":3}[m1[1]];
+    return {date:addDays(todayStr(),off), rest:rest.slice(m1[0].length).trim()};
+  }
+  const m2=rest.match(/^(下?周([一二三四五六日]))/);
+  if(m2){
+    const dow=["日","一","二","三","四","五","六"].indexOf(m2[2]);
+    const tD=t_.getDay();
+    let diff=(dow-tD+7)%7;
+    if(m2[1].startsWith("下")) diff+=7;
+    return {date:addDays(todayStr(),diff), rest:rest.slice(m2[0].length).trim()};
+  }
+  const m3=rest.match(/^(\d{1,2})[月\-/](\d{1,2})[日号]?/);
+  if(m3){
+    const mo=parseInt(m3[1])-1, dd=parseInt(m3[2]);
+    const yr=new Date().getFullYear();
+    const d=new Date(yr,mo,dd);
+    if(d&&d.getMonth()===mo) return {date:fmtDate(d), rest:rest.slice(m3[0].length).trim()};
+  }
+  return {date, rest};
+}
+function parseMyLine(text){
+  let t=text.trim(); if(!t) return null;
+  const dR=parseDate(t); t=dR.rest;
+  const tR=parseTime(t);
+  const name=stripPeriod(tR.rest || "");
+  return {name: name||"(未命名)", time:tR.time, date:dR.date};
+}
+function parseHerLine(line){
+  const trimmed=line.trim(); if(!trimmed) return null;
+  const dR=parseDate(trimmed);
+  let rest=dR.rest;
+  const tR=parseTime(rest);
+  let time=tR.time, event=tR.rest.trim();
+  let location="";
+
+  // 1) @ 分隔：客户会议 @ 国贸三期
+  const atIdx = event.search(/[@＠]/);
+  if(atIdx >= 0){
+    location = event.slice(atIdx+1).trim();
+    event = event.slice(0, atIdx).trim();
+  }
+
+  // 2) 「在/去/到」+ 地点（在白马大厦 / 在家 / 去国贸 …）
+  if(!location){
+    const pm1 = event.match(/^(?:在|去|到)\s*(.+)$/);
+    const pm2 = event.match(/\s+(?:在|去|到)\s*([\u4e00-\u9fa5A-Za-z0-9·]+)$/);
+    if(pm1){
+      location = pm1[1].trim();
+      event = "";
+    } else if(pm2){
+      location = pm2[1].trim();
+      event = event.replace(pm2[0],"").trim();
+    }
+  }
+
+  // 3) 知名地点关键词（无需 @ 也识别）
+  if(!location){
+    const namedLocs = ['白马大厦','恒隆','万象城','太古汇','国贸三期','国贸中心','国贸','天环','天汇','正佳广场','天河城','万达广场','东方宝泰'];
+    for(const loc of namedLocs){
+      if(event.includes(loc)){
+        location = loc;
+        event = event.replace(loc,"").trim();
+        break;
+      }
+    }
+  }
+
+  // 4) 通用地点后缀（大厦/中心/餐厅等）
+  if(!location){
+    const locPattern = /^([\u4e00-\u9fa5A-Za-z0-9·]+?(?:大厦|大楼|中心|广场|公司|酒店|会议室|办公室|医院|学校|超市|商场|咖啡厅|咖啡|餐厅|书店|健身房|瑜伽馆|游泳馆))$/;
+    const lm = event.match(locPattern);
+    if(lm){
+      location = lm[1].trim();
+      event = (event.trim() === lm[1].trim()) ? "" : event.replace(lm[1],"").trim();
+    }
+  }
+
+  event = stripPeriod(event);
+  return {time,event,location,date:dR.date};
+}
+/* 智能粘贴：每行独立识别分类。她的行：开头有 #她/@她/her:/她: 显式前缀，或行首直接"她"+空格/数字/冒号也认（但排除"她们/她的"） */
+function parseUserPaste(text){
+  const lines = (text||"").split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  const myOut = [];
+  const herOut = [];
+  const herPrefix = /^\s*(?:#她|@她|her:|她:|她(?![们其的也]))\s*/;
+  lines.forEach(line=>{
+    const m = line.match(herPrefix);
+    if(m){
+      const rest = line.slice(m[0].length);
+      const p = parseHerLine(rest);
+      if(p) herOut.push({time:p.time, event:p.event, location:p.location});
+    } else {
+      const p = parseMyLine(line);
+      if(p){
+        const sec = detectCatForTask(p.name);
+        myOut.push({section:sec, time:p.time, name:p.name, date:p.date});
+      }
+    }
+  });
+  return {my:myOut, her:herOut};
+}
+
+function quickOrganize(){
+  const txt=document.getElementById("quickInput").value.trim();
+  if(!txt){toast("先粘点任务进来");return;}
+  const {my, her} = parseUserPaste(txt);
+  if(!my.length && !her.length){toast("没解析出任务");return;}
+  /* 默认日期 = 今天（不受下拉框影响；只有行内写了"7月20号"这种日期才用自定义） */
+  const defaultDate = todayStr();
+  my.forEach(p=>{
+    state.myTasks.push({id:uid(), date:p.date||defaultDate, section:p.section,
+      time:p.time, name:p.name, done:false, doneAt:""});
+  });
+  her.forEach(p=>{
+    state.herTasks.push({id:uid(), date:defaultDate, time:p.time,
+      event:p.event, location:p.location, done:false});
+  });
+  document.getElementById("quickInput").value="";
+  save(); render();
+  const total=my.length+her.length;
+  toast("已添加 "+total+" 项"+(her.length?"(含她的日程)":""));
+}
+function inboxAdd(){
+  const input=document.getElementById("inboxInput");
+  const txt=input.value.trim();
+  if(!txt){toast("先写点啥");return;}
+  const lines=txt.split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  lines.forEach(line=>{
+    const p=parseMyLine(line); if(!p) return;
+    state.myTasks.push({id:uid(), date:null, section:"生活",
+      time:p.time, name:p.name||line, done:false, doneAt:""});
+  });
+  input.value="";
+  save(); render();
+  if(lines.length>1) toast("已加 "+lines.length+" 项");
+}
+function myTasksOf(date){ return state.myTasks.filter(t=>t.date===date) }
+function myInbox(){ return state.myTasks.filter(t=>!t.date) }
+function herTasksOf(date){ return state.herTasks.filter(t=>t.date===date) }
+
+function addMyTask(section, date){
+  const t={id:uid(), date:date||todayStr(), section:section||"生活",
+           time:"", name:"", done:false, doneAt:""};
+  state.myTasks.push(t);
+  save();
+  render();
+  /* 直接 focus 新行输入框 */
+  const row = document.querySelector(`.task-row[data-id="${t.id}"]`);
+  if(row){
+    const inp = row.querySelector(".t-name");
+    if(inp){ inp.focus(); try{inp.setSelectionRange(inp.value.length, inp.value.length);}catch(e){} row.scrollIntoView({block:"nearest"}); }
+  }
+}
+function addHerEvent(date){
+  const t={id:uid(), date:date||todayStr(), time:"", event:"", location:"", done:false};
+  state.herTasks.push(t);
+  save(); 
+  render();
+  /* 直接 focus 新行（去掉拖拽干扰、去掉 setTimeout 延迟） */
+  const row = document.querySelector(`.her-row[data-id="${t.id}"]`);
+  if(row){
+    const inp = row.querySelector(".t-name");
+    if(inp){ inp.focus(); try{inp.setSelectionRange(inp.value.length, inp.value.length);}catch(e){} }
+  }
+}
+function sortByTime(arr){
+  return arr.slice().sort((a,b)=>{
+    const ta=a.time||"99:99", tb=b.time||"99:99";
+    return ta.localeCompare(tb);
+  });
+}
+
+const checkSvg=`<svg width="11" height="11" viewBox="0 0 12 12"><path d="M2.5 6 L5 8.5 L9.5 3.5" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+/* 浅粉心形 — 比红色 emoji ❤️ 更精致、与粉色主题统一 */
+const heartSvg=`<svg width="13" height="12" viewBox="0 0 24 22"><path d="M12 20.5 C12 20.5 4 13.5 4 8 C4 4.5 6.5 2 9.5 2 C11 2 12 3 12 3 C12 3 13 2 14.5 2 C17.5 2 20 4.5 20 8 C20 13.5 12 20.5 12 20.5 Z" fill="#ec4899" opacity=".92"/><circle cx="8" cy="6" r="1.3" fill="#fff" opacity=".55"/></svg>`;
+
+function myRowHTML(t){
+  const sk=SEC_KEY[Math.max(0, SECTIONS.indexOf(t.section))] || "b1";
+  const hasTime=t.time && t.time.trim()!=="";
+  return `
+  <div class="task-row row-${sk} ${t.done?'done':''} ${hasTime?'':'no-time'}" draggable="true" data-id="${t.id}">
+    <button class="check ${t.done?'on':''}" onclick="toggleMyDone('${t.id}')" draggable="false">${t.done?checkSvg:''}</button>
+    <input class="t-time" value="${esc(t.time)}" data-id="${t.id}" data-k="time" placeholder="时间" maxlength="5" draggable="false">
+    <input class="t-name" value="${esc(t.name)}" data-id="${t.id}" data-k="name" placeholder="任务内容…" draggable="false">
+    <span class="grip" draggable="false" title="拖到下方某天改期">
+      <svg width="10" height="16" viewBox="0 0 10 16"><circle cx="2" cy="3" r="1.3" fill="#c3cad6"/><circle cx="8" cy="3" r="1.3" fill="#c3cad6"/><circle cx="2" cy="8" r="1.3" fill="#c3cad6"/><circle cx="8" cy="8" r="1.3" fill="#c3cad6"/><circle cx="2" cy="13" r="1.3" fill="#c3cad6"/><circle cx="8" cy="13" r="1.3" fill="#c3cad6"/></svg>
+    </span>
+    <button class="t-del" onclick="delMyTask('${t.id}')" draggable="false">×</button>
+  </div>`;
+}
+
+function myDayCardHTML(ds, isToday, filter){
+  const d=parseD(ds);
+  const arr=myTasksOf(ds);
+  const headHTML = `
+    <div class="day-card-head">
+      <div class="day-name">周${DOW[d.getDay()]} <span class="date">${shortmd(d)}</span>${isToday?'<span class="today-tag">今天</span>':''}</div>
+    </div>`;
+
+  /* 三个分块只展示未完成任务，已完成全部丢到日卡末尾 */
+  let bodyHTML="";
+  if(filter !== 'done'){
+    for(let i=0;i<SECTIONS.length;i++){
+      const section=SECTIONS[i];
+      const sk=SEC_KEY[i];
+      let items=arr.filter(t=> (t.section||"生活") === section && !t.done);
+      items=sortByTime(items);
+      bodyHTML+=`<div class="sec-block ${sk}">`;
+      if(items.length===0){
+        /* 空 section 不再显示"暂无"占位，保持纯净 */
+      } else {
+        items.forEach(t=>bodyHTML+=myRowHTML(t));
+      }
+      bodyHTML+=`</div>`;
+    }
+  }
+
+  /* 已完成的任务 — 在末尾统一展示，不再分散在原 section 里 */
+  const doneItems=arr.filter(t=>t.done);
+  if(filter === 'done'){
+    if(doneItems.length===0){
+      /* 空时不显示占位 */
+    } else {
+      bodyHTML+=`<div class="sec-done-group">`;
+      doneItems.forEach(t=>bodyHTML+=myRowHTML(t));
+      bodyHTML+=`</div>`;
+    }
+  } else if(doneItems.length){
+    bodyHTML+=`<div class="sec-done-group">`;
+    doneItems.forEach(t=>bodyHTML+=myRowHTML(t));
+    bodyHTML+=`</div>`;
+  }
+
+  return `
+  <div class="day-card ${isToday?'today':''}" data-date="${ds}"
+    ondragover="dragOver(event,this)" ondragleave="dragLeave(this)" ondrop="dropMyOn('${ds}')">
+    ${headHTML}
+    <div class="day-card-body">${bodyHTML}</div>
+    <div class="day-card-foot"><button class="add-day-btn" onclick="addMyTask('','${ds}')">+ 添加</button></div>
+  </div>`;
+}
+
+function herRowHTML(t){
+  return `
+  <div class="task-row her-row ${t.done?'done':''}" data-id="${t.id}" style="border-left-color:transparent">
+    <button class="check ${t.done?'on':''}" onclick="toggleHerDone('${t.id}')">${t.done?checkSvg:''}</button>
+    <input class="t-time" tabindex="0" value="${esc(t.time)}" data-id="${t.id}" data-k="time" placeholder="--:--" maxlength="5">
+    <input class="t-name" tabindex="0" value="${esc(t.event)}" data-id="${t.id}" data-k="event" placeholder="事项…">
+    <input class="ev-loc-input" tabindex="0" value="${esc(t.location)}" data-id="${t.id}" data-k="location" placeholder="地点">
+    <span class="grip" title="拖动重排">
+      <svg width="10" height="16" viewBox="0 0 10 16"><circle cx="2" cy="3" r="1.3" fill="#c3cad6"/><circle cx="8" cy="3" r="1.3" fill="#c3cad6"/><circle cx="2" cy="8" r="1.3" fill="#c3cad6"/><circle cx="8" cy="8" r="1.3" fill="#c3cad6"/><circle cx="2" cy="13" r="1.3" fill="#c3cad6"/><circle cx="8" cy="13" r="1.3" fill="#c3cad6"/></svg>
+    </span>
+    <button class="t-del" onclick="delHerTask('${t.id}')" title="删除">×</button>
+  </div>`;
+}
+
+function herDayCardHTML(ds){
+  const d=parseD(ds);
+  const arr=sortByTime(herTasksOf(ds));
+  const today=todayStr();
+  const isToday=ds===today;
+  const head=`
+    <div class="day-card-head">
+      <div class="day-name" style="gap:4px">
+        <button class="her-nav-btn" onclick="shiftHerDay(-1)" title="前一天">‹</button>
+        <span>她的日程 <span class="heart">${heartSvg}</span> <span class="date">${shortmd(d)}</span>${isToday?'<span class="today-tag" style="background:rgba(255,255,255,.55);color:var(--her)">今天</span>':''}</span>
+        <button class="her-nav-btn" onclick="shiftHerDay(1)" title="后一天">›</button>
+      </div>
+    </div>`;
+  const empty=arr.length===0
+    ? `<div style="display:flex;align-items:center;justify-content:center;color:var(--ink-soft);font-size:12.5px;min-height:90px">这天没排日程</div>` : "";
+  const items=arr.map(herRowHTML).join("");
+  return `
+  <div class="day-card her-day" data-date="${ds}"
+    ondragover="dragOver(event,this)" ondragleave="dragLeave(this)" ondrop="dropHerOn('${ds}')">
+    ${head}
+    <div class="day-card-body">${items||empty}</div>
+    <div class="day-card-foot"><button class="add-day-btn" onclick="addHerEvent('${ds}')">+ 添加</button></div>
+  </div>`;
+}
+
+function shiftHerDay(delta){
+  const cur = state.herViewDate || todayStr();
+  state.herViewDate = addDays(cur, delta);
+  save(); render();
+}
+
+function renderMy(){
+  const today=todayStr();
+  const td=parseD(today);
+  const days=Array.from({length:7}, (_,i)=>addDays(state.viewWeekStart, i));
+  if(!state.targetDay || !days.includes(state.targetDay)){
+    state.targetDay = days.includes(today) ? today : days[0];
+    save();
+  }
+
+  const s=parseD(days[0]), e=parseD(days[6]);
+  document.getElementById("myWeekLabel").textContent = `查看 · ${md(s)} — ${md(e)}`;
+  /* 顶部居中: 今天日期 (分段精致排版) */
+  document.getElementById("dateLabel").innerHTML =
+    `<span class="top-today">今天</span><span class="top-date">${td.getMonth()+1}月${td.getDate()}日</span><span class="top-dow">周${DOW[td.getDay()]}</span>`;
+
+  const sel=document.getElementById("targetDay");
+  sel.innerHTML=days.map(ds=>{
+    const d=parseD(ds);
+    /* 简化日期标签：只显示 月/日，去掉周X（用户偏好） */
+    const m=d.getMonth()+1, dd=d.getDate();
+    const label=(ds===today?`今天·${m}/${dd}`:`${m}/${dd}`);
+    return `<option value="${ds}" ${ds===today?'selected':''}>${label}</option>`;
+  }).join("");
+
+  const filter=document.querySelector('#filterSeg button.active').dataset.f;
+
+  /* 8 张卡：7 张我的 + 第 8 张她的日程（用 herViewDate 独立翻页） */
+  const cards=days.map(ds=>myDayCardHTML(ds, ds===today, filter));
+  cards.push(herDayCardHTML(state.herViewDate || today));
+  document.getElementById("myGrid").innerHTML=cards.join("");
+
+  const inbox=myInbox();
+  const list=document.getElementById("inboxList");
+  if(!inbox.length){
+    /* 空灵感箱不显示占位文字 */
+    list.innerHTML="";
+  } else {
+    list.innerHTML=inbox.map(t=>{
+      const sk=SEC_KEY[Math.max(0, SECTIONS.indexOf(t.section))] || "b1";
+      const hasTime=t.time && t.time.trim()!=="";
+      return `<div class="task-row row-${sk} ${t.done?'done':''} ${hasTime?'':'no-time'}" draggable="true" data-id="${t.id}">
+        <button class="check ${t.done?'on':''}" onclick="toggleMyDone('${t.id}')" draggable="false">${t.done?checkSvg:''}</button>
+        <input class="t-time" value="${esc(t.time)}" data-id="${t.id}" data-k="time" placeholder="时间" maxlength="5" draggable="false">
+        <input class="t-name" value="${esc(t.name)}" data-id="${t.id}" data-k="name" placeholder="任务…" draggable="false">
+        <span class="grip" draggable="false" title="拖到下方排期">
+          <svg width="10" height="16" viewBox="0 0 10 16"><circle cx="2" cy="3" r="1.3" fill="#c3cad6"/><circle cx="8" cy="3" r="1.3" fill="#c3cad6"/><circle cx="2" cy="8" r="1.3" fill="#c3cad6"/><circle cx="8" cy="8" r="1.3" fill="#c3cad6"/><circle cx="2" cy="13" r="1.3" fill="#c3cad6"/><circle cx="8" cy="13" r="1.3" fill="#c3cad6"/></svg>
+        </span>
+        <button class="t-del" onclick="delMyTask('${t.id}')" draggable="false">×</button>
+      </div>`;
+    }).join("");
+  }
+
+  const all=state.myTasks;
+  const totalDone=all.filter(t=>t.done).length;
+  document.getElementById("stats").innerHTML=
+    `共 <b>${all.length}</b> 项 · 待办 <b>${all.length-totalDone}</b> · 已完成 <b>${totalDone}</b> · 灵感箱 <b>${inbox.length}</b>`;
+}
+
+function render(){ renderMy(); }
+
+function toggleMyDone(id){
+  const t=state.myTasks.find(x=>x.id===id); if(!t) return;
+  t.done=!t.done; t.doneAt=t.done?shortmd(new Date()):"";
+  save();
+  /* 直接操作 DOM，不走全量 render 避免闪烁 */
+  const row=document.querySelector(`.task-row[data-id="${id}"]`);
+  if(row) row.classList.toggle("done", t.done);
+  const cb=document.querySelector(`.task-row[data-id="${id}"] .check`);
+  if(cb) cb.classList.toggle("on", t.done);
+}
+function delMyTask(id){
+  state.myTasks=state.myTasks.filter(x=>x.id!==id); save();
+  const row=document.querySelector(`.task-row[data-id="${id}"]`);
+  if(row) row.remove();
+}
+function toggleHerDone(id){
+  const t=state.herTasks.find(x=>x.id===id); if(!t) return;
+  t.done=!t.done; save();
+  const row=document.querySelector(`.her-row[data-id="${id}"]`);
+  if(row) row.classList.toggle("done", t.done);
+  const cb=document.querySelector(`.her-row[data-id="${id}"] .check`);
+  if(cb) cb.classList.toggle("on", t.done);
+}
+function delHerTask(id){
+  state.herTasks=state.herTasks.filter(x=>x.id!==id); save();
+  const row=document.querySelector(`.her-row[data-id="${id}"]`);
+  if(row) row.remove();
+}
+
+/* 行内 Enter：仅识别时间/日期，不自动加下一行 */
+function handleMyEnter(id){
+  const t=state.myTasks.find(x=>x.id===id); if(!t) return;
+  const text=(t.name||"").trim();
+  if(!text){document.activeElement.blur();return;}
+  const p=parseMyLine(text);
+  if(p){
+    t.time=p.time; t.name=p.name;
+    if(p.date && p.date!==t.date){
+      const was=!t.date; t.date=p.date;
+      toast((was?"已排期":"已改期")+" 到 "+md(parseD(p.date)));
+    }
+  }
+  save(); render();
+  /* 失焦，不再创建空行 */
+  setTimeout(()=>{
+    const inp=document.querySelector(`[data-id="${id}"] .t-name`);
+    if(inp) inp.blur();
+  }, 30);
+}
+function handleHerEnter(id){
+  const t=state.herTasks.find(x=>x.id===id); if(!t) return;
+  let text=(t.event||"").trim();
+  if(!text){document.activeElement.blur();return;}
+  /* her-row 直接输入时也支持「她」开头 — 剥前缀后再 parse */
+  text = text.replace(/^\s*(?:#她|@她|her:|她:|她(?![们其的也]))\s*/, '').trim();
+  if(!text){document.activeElement.blur();return;}
+  /* 直接复用 parseHerLine 完整智能识别（时间 / 事项 / 地点 + 知名地点识别 + @分隔 等） */
+  const parsed = parseHerLine(text);
+  if(parsed){
+    t.time     = parsed.time     || t.time;
+    t.event    = parsed.event    || "";
+    t.location = parsed.location || "";
+  }
+  save(); render();
+  setTimeout(()=>{
+    const inp=document.querySelector(`[data-id="${id}"] .t-name`);
+    if(inp) inp.blur();
+  }, 30);
+}
+
+document.addEventListener("input", function(e){
+  const t=e.target, id=t.dataset.id, k=t.dataset.k;
+  if(!id) return;
+  const myT=state.myTasks.find(x=>x.id===id);
+  if(myT){
+    if(k==="name"){
+      const oldSec = myT.section || "生活";
+      myT.name = t.value;
+      /* 实时智能识别分类 */
+      const newSec = detectCatForTask(t.value);
+      if(t.value.trim() && newSec !== oldSec){
+        myT.section = newSec;
+        const start = t.selectionStart, end = t.selectionEnd;
+        save();
+        render();
+        requestAnimationFrame(()=>{
+          const inp = document.querySelector(`[data-id="${id}"] .t-name`);
+          if(inp){ inp.focus(); try{inp.setSelectionRange(start, end);}catch(e){} }
+        });
+        return;
+      }
+      save();
+      return;
+    }
+    else if(k==="time"){
+      const newVal = t.value.replace(/[^\d:]/g,"").slice(0,5);
+      /* 把脏字符回写回 DOM，避免"02:Na"这种半成品显示在框里 */
+      if(t.value !== newVal){
+        const start = t.selectionStart, end = t.selectionEnd;
+        t.value = newVal;
+        try{ t.setSelectionRange(start, end); }catch(e){}
+      }
+      myT.time = newVal;
+      save();
+      return;
+    }
+  }
+  const herT=state.herTasks.find(x=>x.id===id);
+  if(herT){
+    if(k==="time") herT.time=t.value.replace(/[^\d:]/g,"").slice(0,5);
+    else if(k==="event") herT.event=t.value;
+    else if(k==="location") herT.location=t.value;
+    save();
+  }
+});
+
+document.addEventListener("keydown", function(e){
+  if(e.key === "Enter"){
+    const t=e.target;
+    /* 行内 t-name Enter：仅识别+失焦，不再加下一行 */
+    if(t.classList && t.classList.contains("t-name") && t.dataset.k==="name"){
+      e.preventDefault();
+      handleMyEnter(t.dataset.id);
+      return;
+    }
+    if(t.classList && t.classList.contains("t-name") && t.dataset.k==="event"){
+      e.preventDefault();
+      handleHerEnter(t.dataset.id);
+      return;
+    }
+    if(t.id==="quickInput"){e.preventDefault(); quickOrganize(); return;}
+    if(t.id==="inboxInput"){
+      e.preventDefault();
+      const v=t.value.trim();
+      if(!v) return;
+      inboxAdd(); return;
+    }
+  }
+  if(e.key === "Escape"){
+    if(e.target.classList && (e.target.classList.contains("t-name") || e.target.classList.contains("ev-loc-input"))){
+      e.target.blur();
+    }
+  }
+});
+
+document.getElementById("targetDay").addEventListener("change", e=>{ state.targetDay=e.target.value; save(); });
+document.getElementById("filterSeg").addEventListener("click", function(e){
+  if(e.target.tagName!=="BUTTON") return;
+  this.querySelectorAll("button").forEach(b=>b.classList.remove("active"));
+  e.target.classList.add("active"); render();
+});
+
+function shiftWeek(delta){
+  state.viewWeekStart=addDays(state.viewWeekStart, delta*7);
+  const days=Array.from({length:7}, (_,i)=>addDays(state.viewWeekStart, i));
+  const today=todayStr();
+  state.targetDay=days.includes(today)?today:days[0];
+  save(); render();
+}
+function goToday(){
+  const today=todayStr();
+  state.viewWeekStart=mondayOf(today);
+  state.targetDay=today;
+  save(); render(); toast("已回到本周");
+}
+
+let dragId=null, dragKind=null;
+document.addEventListener("dragstart", function(e){
+  const row=e.target.closest(".task-row");
+  if(!row) return;
+  dragId=row.dataset.id;
+  dragKind=(row.classList.contains("her-row")?"her":"my");
+  row.classList.add("dragging");
+  e.dataTransfer.effectAllowed="move";
+});
+document.addEventListener("dragend", function(){
+  document.querySelectorAll(".task-row.dragging").forEach(c=>c.classList.remove("dragging"));
+  document.querySelectorAll(".day-card.drop").forEach(c=>c.classList.remove("drop"));
+  dragId=null; dragKind=null;
+});
+function dragOver(e, el){e.preventDefault();e.dataTransfer.dropEffect="move";el.classList.add("drop");}
+function dragLeave(el){el.classList.remove("drop");}
+function dropMyOn(ds){
+  if(dragId && dragKind==="my"){
+    const t=state.myTasks.find(x=>x.id===dragId); if(!t) return;
+    const was=!t.date; t.date=ds; save(); render();
+    toast(was?"已排期到 "+md(parseD(ds)):"已改期到 "+md(parseD(ds)));
+  } else if(dragId && dragKind==="her"){
+    const t=state.herTasks.find(x=>x.id===dragId); if(!t) return;
+    t.date=ds; save(); render();
+    toast("已改期到 "+md(parseD(ds)));
+  }
+}
+function dropHerOn(ds){
+  if(dragId && dragKind==="her"){
+    const t=state.herTasks.find(x=>x.id===dragId); if(!t) return;
+    t.date=ds; save(); render();
+    toast("已改期到 "+md(parseD(ds)));
+  }
+}
+
+function exportData(){
+  const blob=new Blob([JSON.stringify(state,null,2)], {type:"application/json"});
+  const a=document.createElement("a");
+  const d=new Date();
+  a.href=URL.createObjectURL(blob);
+  a.download=`我的任务_v5_${d.getFullYear()}${pad2(d.getMonth()+1)}${pad2(d.getDate())}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+  toast("已导出");
+}
+function importData(){
+  const inp=document.createElement("input");
+  inp.type="file"; inp.accept=".json,application/json";
+  inp.onchange=()=>{
+    const f=inp.files[0]; if(!f) return;
+    const r=new FileReader();
+    r.onload=()=>{
+      try{
+        const d=JSON.parse(r.result);
+        if(!d.myTasks) throw 0;
+        d.schema=5; state=d; save(); render(); toast("导入成功");
+      }catch(e){toast("导入失败");}
+    };
+    r.readAsText(f);
+  };
+  inp.click();
+}
+
+/* 启动：加载数据 → 渲染 → 开始轮询同步 */
+(async function bootstrap(){
+  state = await initLoad();
+  render();
+  startPollSync();
+})();
+</script>
+</body>
+</html>
