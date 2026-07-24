@@ -84,7 +84,7 @@
   /* Paste Command Bar (居中胶囊状，Google 风) */
   .paste-cmd{
     display:flex; align-items:center; gap:8px;
-    max-width:420px; margin:18px auto 0; padding:6px 12px;
+    max-width:560px; margin:18px auto 0; padding:6px 14px;
     background:#fff; border:1px solid var(--line); border-radius:24px;
     box-shadow:var(--shadow-sm);
     transition:box-shadow .15s, border-color .15s;
@@ -223,19 +223,19 @@
     display:flex; align-items:center; justify-content:center; transition:.15s;}
   .check:hover{border-color:var(--primary)}
   .check.on{background:var(--primary); border-color:var(--primary)}
-  .t-time{width:42px; border:1px solid transparent; border-radius:5px; padding:2px 4px;
+  .t-time{min-width:46px; width:auto; max-width:96px; border:1px solid transparent; border-radius:5px; padding:2px 5px;
     font-size:11.5px; font-family:inherit; color:var(--zb); background:var(--zb-soft);
     text-align:center; font-weight:500; flex-shrink:0; letter-spacing:.3px;}
   .t-time:focus{outline:none; border-color:var(--zb); box-shadow:0 0 0 2px var(--zb-soft); background:#fff}
   .t-time::placeholder{color:#94a3b8; font-weight:400; font-style:italic}
   .task-row.no-time .t-time{display:none}
   /* 她的日程时间框 — 不要粉色底，做中性 */
-  /* 她的日程时间框 — 沿用主蓝底色（与我的任务一致），只调宽度 */
-  .her-row .t-time{width:48px; font-size:11.5px;}
+  /* 她的日程时间框 — 沿用主蓝底色（与我的任务一致），支持时间段 */
+  .her-row .t-time{min-width:46px; width:auto; max-width:96px; font-size:11.5px;}
 
-  /* 任务名字体：再缩小 + 再轻一点 */
+  /* 任务名字体：稍大稍粗，保持克制 */
   .t-name{flex:1; min-width:0; border:none; background:transparent; padding:3px 6px;
-    font-size:12.5px; font-weight:500; color:var(--ink); border-radius:4px;
+    font-size:13.5px; font-weight:600; color:var(--ink); border-radius:4px;
     letter-spacing:0; line-height:1.4;}
   .t-name:focus{outline:none; background:#fff; box-shadow:0 0 0 2px var(--primary-soft)}
   .t-name::placeholder{color:#aab2c0; font-weight:400}
@@ -496,7 +496,35 @@ function cnNum(s){
   return parseInt(s);
 }
 function parseTime(text){
-  /* min 收紧为只匹配阿拉伯数字：避免「2点白马」中 min 贪婪抓「白马」导致 NaN。
+  /* 1) 先尝试完整时钟时间段：1:00-2:00 / 13:30-15:00 */
+  const rangeClock = text.match(/(上午|下午|早上|晚上|中午|凌晨)?\s*(\d{1,2}:\d{2})\s*[-~到至]\s*(\d{1,2}:\d{2})/);
+  if(rangeClock){
+    const ap=rangeClock[1];
+    let [h1,min1]=rangeClock[2].split(':').map(Number);
+    let [h2,min2]=rangeClock[3].split(':').map(Number);
+    if(ap==="下午"||ap==="晚上"||ap==="中午"){if(h1<12) h1+=12; if(h2<12) h2+=12;}
+    else if(ap==="上午"||ap==="早上"||ap==="凌晨"){if(h1===12) h1=0; if(h2===12) h2=0;}
+    if(h1>23) h1=23; if(h2>23) h2=23; if(min1>59) min1=0; if(min2>59) min2=0;
+    return {rest:text.replace(rangeClock[0],"").replace(/\s+/g," ").trim(),
+            time:pad2(h1)+":"+pad2(min1)+"-"+pad2(h2)+":"+pad2(min2)};
+  }
+
+  /* 2) 再尝试简略时间段：1-2点 / 1点到2点 / 1~2点 / 两点到三点 */
+  const range = text.match(/(上午|下午|早上|晚上|中午|凌晨)?\s*([\d]{1,2}|[一二两三四五六七八九十]{1,3})\s*(?:[:点])?\s*[-~到至]\s*([\d]{1,2}|[一二两三四五六七八九十]{1,3})\s*[:点]?\s*(分)?(半)?/);
+  if(range){
+    let h1=cnNum(range[2]), h2=cnNum(range[3]);
+    const ap=range[1];
+    let min1=0, min2=0;
+    if(range[5]==="半"){ min2=30; }
+    if(!isFinite(h1) || !isFinite(h2)) return {rest:text.trim(), time:""};
+    if(ap==="下午"||ap==="晚上"||ap==="中午"){if(h1<12) h1+=12; if(h2<12) h2+=12;}
+    else if(ap==="上午"||ap==="早上"||ap==="凌晨"){if(h1===12) h1=0; if(h2===12) h2=0;}
+    if(h1>23) h1=23; if(h2>23) h2=23;
+    return {rest:text.replace(range[0],"").replace(/\s+/g," ").trim(),
+            time:pad2(h1)+":"+pad2(min1)+"-"+pad2(h2)+":"+pad2(min2)};
+  }
+
+  /* 单点时间。min 收紧为只匹配阿拉伯数字：避免「2点白马」中 min 贪婪抓「白马」导致 NaN。
      中文数字走 h 字段（如「下午两点半」→ h=2, min=30）。 */
   const m = text.match(/(上午|下午|早上|晚上|中午|凌晨)?\s*([\d\u4e00-\u9fa5]{1,3})\s*[:点]\s*(\d{0,2})\s*分?(半)?/);
   if(!m) return {rest:text.trim(), time:""};
@@ -558,38 +586,17 @@ function parseHerLine(line){
     event = event.slice(0, atIdx).trim();
   }
 
-  // 2) 「在/去/到」+ 地点（在白马大厦 / 在家 / 去国贸 …）
+  // 2) 地点关键词列表（只认这些关键词，避免「去恒隆工作」把「恒隆工作」整体当地点）
   if(!location){
-    const pm1 = event.match(/^(?:在|去|到)\s*(.+)$/);
-    const pm2 = event.match(/\s+(?:在|去|到)\s*([\u4e00-\u9fa5A-Za-z0-9·]+)$/);
-    if(pm1){
-      location = pm1[1].trim();
-      event = "";
-    } else if(pm2){
-      location = pm2[1].trim();
-      event = event.replace(pm2[0],"").trim();
-    }
-  }
-
-  // 3) 知名地点关键词（无需 @ 也识别）
-  if(!location){
-    const namedLocs = ['白马大厦','恒隆','万象城','太古汇','国贸三期','国贸中心','国贸','天环','天汇','正佳广场','天河城','万达广场','东方宝泰'];
-    for(const loc of namedLocs){
+    const namedLocs = ['白马大厦','恒隆广场','恒隆','万象城','太古汇','国贸三期','国贸中心','国贸','天环','天汇','正佳广场','天河城','万达广场','东方宝泰','在家','家里','公司','单位','学校','医院','机场','车站','地铁站'];
+    // 先匹配更长的，避免「恒隆广场」被「恒隆」截断
+    const sortedLocs = namedLocs.slice().sort((a,b)=>b.length-a.length);
+    for(const loc of sortedLocs){
       if(event.includes(loc)){
         location = loc;
         event = event.replace(loc,"").trim();
         break;
       }
-    }
-  }
-
-  // 4) 通用地点后缀（大厦/中心/餐厅等）
-  if(!location){
-    const locPattern = /^([\u4e00-\u9fa5A-Za-z0-9·]+?(?:大厦|大楼|中心|广场|公司|酒店|会议室|办公室|医院|学校|超市|商场|咖啡厅|咖啡|餐厅|书店|健身房|瑜伽馆|游泳馆))$/;
-    const lm = event.match(locPattern);
-    if(lm){
-      location = lm[1].trim();
-      event = (event.trim() === lm[1].trim()) ? "" : event.replace(lm[1],"").trim();
     }
   }
 
@@ -699,7 +706,7 @@ function myRowHTML(t){
   return `
   <div class="task-row row-${sk} ${t.done?'done':''} ${hasTime?'':'no-time'}" draggable="true" data-id="${t.id}">
     <button class="check ${t.done?'on':''}" onclick="toggleMyDone('${t.id}')" draggable="false">${t.done?checkSvg:''}</button>
-    <input class="t-time" value="${esc(t.time)}" data-id="${t.id}" data-k="time" placeholder="时间" maxlength="5" draggable="false">
+    <input class="t-time" value="${esc(t.time)}" data-id="${t.id}" data-k="time" placeholder="时间" maxlength="11" draggable="false">
     <input class="t-name" value="${esc(t.name)}" data-id="${t.id}" data-k="name" placeholder="任务内容…" draggable="false">
     <span class="grip" draggable="false" title="拖到下方某天改期">
       <svg width="10" height="16" viewBox="0 0 10 16"><circle cx="2" cy="3" r="1.3" fill="#c3cad6"/><circle cx="8" cy="3" r="1.3" fill="#c3cad6"/><circle cx="2" cy="8" r="1.3" fill="#c3cad6"/><circle cx="8" cy="8" r="1.3" fill="#c3cad6"/><circle cx="2" cy="13" r="1.3" fill="#c3cad6"/><circle cx="8" cy="13" r="1.3" fill="#c3cad6"/></svg>
@@ -763,7 +770,7 @@ function herRowHTML(t){
   return `
   <div class="task-row her-row ${t.done?'done':''}" data-id="${t.id}" style="border-left-color:transparent">
     <button class="check ${t.done?'on':''}" onclick="toggleHerDone('${t.id}')">${t.done?checkSvg:''}</button>
-    <input class="t-time" tabindex="0" value="${esc(t.time)}" data-id="${t.id}" data-k="time" placeholder="--:--" maxlength="5">
+    <input class="t-time" tabindex="0" value="${esc(t.time)}" data-id="${t.id}" data-k="time" placeholder="--:--" maxlength="11">
     <input class="t-name" tabindex="0" value="${esc(t.event)}" data-id="${t.id}" data-k="event" placeholder="事项…">
     <input class="ev-loc-input" tabindex="0" value="${esc(t.location)}" data-id="${t.id}" data-k="location" placeholder="地点">
     <span class="grip" title="拖动重排">
@@ -846,7 +853,7 @@ function renderMy(){
       const hasTime=t.time && t.time.trim()!=="";
       return `<div class="task-row row-${sk} ${t.done?'done':''} ${hasTime?'':'no-time'}" draggable="true" data-id="${t.id}">
         <button class="check ${t.done?'on':''}" onclick="toggleMyDone('${t.id}')" draggable="false">${t.done?checkSvg:''}</button>
-        <input class="t-time" value="${esc(t.time)}" data-id="${t.id}" data-k="time" placeholder="时间" maxlength="5" draggable="false">
+        <input class="t-time" value="${esc(t.time)}" data-id="${t.id}" data-k="time" placeholder="时间" maxlength="11" draggable="false">
         <input class="t-name" value="${esc(t.name)}" data-id="${t.id}" data-k="name" placeholder="任务…" draggable="false">
         <span class="grip" draggable="false" title="拖到下方排期">
           <svg width="10" height="16" viewBox="0 0 10 16"><circle cx="2" cy="3" r="1.3" fill="#c3cad6"/><circle cx="8" cy="3" r="1.3" fill="#c3cad6"/><circle cx="2" cy="8" r="1.3" fill="#c3cad6"/><circle cx="8" cy="8" r="1.3" fill="#c3cad6"/><circle cx="2" cy="13" r="1.3" fill="#c3cad6"/><circle cx="8" cy="13" r="1.3" fill="#c3cad6"/></svg>
@@ -959,7 +966,7 @@ document.addEventListener("input", function(e){
       return;
     }
     else if(k==="time"){
-      const newVal = t.value.replace(/[^\d:]/g,"").slice(0,5);
+      const newVal = t.value.replace(/[^\d:\-]/g,"").slice(0,11);
       /* 把脏字符回写回 DOM，避免"02:Na"这种半成品显示在框里 */
       if(t.value !== newVal){
         const start = t.selectionStart, end = t.selectionEnd;
@@ -973,7 +980,7 @@ document.addEventListener("input", function(e){
   }
   const herT=state.herTasks.find(x=>x.id===id);
   if(herT){
-    if(k==="time") herT.time=t.value.replace(/[^\d:]/g,"").slice(0,5);
+    if(k==="time") herT.time=t.value.replace(/[^\d:\-]/g,"").slice(0,11);
     else if(k==="event") herT.event=t.value;
     else if(k==="location") herT.location=t.value;
     save();
