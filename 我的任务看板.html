@@ -255,7 +255,7 @@
   .ev-loc-input::placeholder{color:#b8c0cc; font-style:italic}
   .ev-loc-input:focus{outline:none; background:#eaeefe}
   /* 她的日程输入项：地点更窄，把空间让给事项输入框 */
-  .ev-loc-input{width:56px; padding:3px 5px; font-size:12px;}
+  .ev-loc-input{width:64px; padding:3px 5px; font-size:14px; font-weight:500;}
   .t-name{min-width:60px;}
 
   .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
@@ -601,6 +601,8 @@ function parseHerLine(line){
   }
 
   event = stripPeriod(event);
+  /* 去掉事件前残留的「去/到/在」等介词，如「去工作」「到上班」 */
+  event = event.replace(/^(?:去|到|在)\s*/,'').trim();
   return {time,event,location,date:dR.date};
 }
 /* 智能粘贴：每行独立识别分类。她的行：开头有 #她/@她/her:/她: 显式前缀，或行首直接"她"+空格/数字/冒号也认（但排除"她们/她的"） */
